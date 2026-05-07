@@ -1,0 +1,23 @@
+{
+  "_note": "These payloads hit the fixtures map in the Enrich node, so each is guaranteed to score into the labelled tier.",
+
+  "high_tier": {
+    "payload": { "name": "Sara Patel", "email": "sara@stripe.com", "company": "Stripe" },
+    "expected": "stripe.com → 8000 employees (5pt) + Tech (3pt) = 8 → HIGH → Slack + CRM Deal"
+  },
+
+  "medium_tier": {
+    "payload": { "name": "Priya Shah", "email": "priya@midmarket.io", "company": "MidMarket" },
+    "expected": "midmarket.io → 200 employees (3pt) + Retail (1pt) = 4 → MEDIUM → Nurture campaign"
+  },
+
+  "low_tier": {
+    "payload": { "name": "Tom Berger", "email": "tom@localbakery.com", "company": "Local Bakery" },
+    "expected": "localbakery.com → 12 employees (1pt) + Food (1pt) = 2 → LOW → Resources email"
+  },
+
+  "invalid": {
+    "payload": { "name": "", "email": "not-an-email", "company": "Broken Inc" },
+    "expected": "Validator flags → IF routes to Respond 400 with a clear error message"
+  }
+}

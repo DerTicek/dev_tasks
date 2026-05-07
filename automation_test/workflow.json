@@ -1,0 +1,667 @@
+{
+  "id": "lead-routing-v1",
+  "name": "Lead Enrichment & Routing",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Lead Enrichment & Routing\n\n**Trigger:** POST `/webhook/lead-intake`\n\n**Pipeline:**\n1. Validate (returns `valid: bool`, never throws)\n2. IF: invalid \u2192 respond 400 immediately\n3. Enrich via Clearbit (simulated \u2014 see Code node)\n4. Score (company size + industry)\n5. Score fans out \u2192 **Sheets log** (parallel) AND **Switch**\n6. Switch routes by tier:\n   - **High (\u22656):** Slack + CRM deal\n   - **Medium (3\u20135):** add to nurture\n   - **Low (<3):** resources email\n7. Respond with routing decision (reads `$('Score Lead')` so a failing branch can't break the response)\n\n**Resilience:**\n- `onError: continueRegularOutput` on every external call \u2192 one failure doesn't cascade\n- Logging is parallel, not serial \u2192 response time is `max(log, route)`, not `log + route`\n- Respond uses node-name reference \u2192 branch failure \u2260 broken response",
+        "height": 460,
+        "width": 480,
+        "color": 4
+      },
+      "id": "sticky-overview",
+      "name": "Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -360,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-intake",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook",
+      "name": "Receive Lead",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        380
+      ],
+      "webhookId": "lead-intake"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate required fields and normalize.\n// Returns { valid: bool, error?, ...normalized } so a downstream IF can branch\n// to a 400-Respond instead of throwing (which would just silently 200-empty\n// the webhook caller).\nconst body = $input.item.json.body || $input.item.json;\nconst { name, email, company } = body;\n\nif (!name || !email || !company) {\n  return { json: { valid: false, error: 'Missing required fields: name, email, company' } };\n}\n\nconst emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\nif (!emailRegex.test(email)) {\n  return { json: { valid: false, error: `Invalid email: ${email}` } };\n}\n\nconst domain = email.split('@')[1].toLowerCase();\n\nreturn {\n  json: {\n    valid: true,\n    name: name.trim(),\n    email: email.toLowerCase().trim(),\n    company: company.trim(),\n    domain,\n    receivedAt: new Date().toISOString()\n  }\n};"
+      },
+      "id": "node-validate",
+      "name": "Validate & Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// SIMULATED Clearbit enrichment.\n//\n// Production swap: replace this Code node with an HTTP Request node:\n//   GET https://company.clearbit.com/v2/companies/find?domain={{$json.domain}}\n//   Authorization: Bearer {{$credentials.clearbit.apiKey}}\n//   Continue On Fail: true (so the workflow degrades gracefully)\n// Then a small Set node maps Clearbit's response to {companySize, industry}.\n\nconst { domain } = $input.item.json;\n\n// Hand-curated fixtures so the demo always hits the right tier when needed.\nconst fixtures = {\n  'google.com':      { size: 150000, industry: 'Tech' },\n  'stripe.com':      { size: 8000,   industry: 'Tech' },\n  'acme.io':         { size: 75,     industry: 'Tech' },\n  'midmarket.io':    { size: 200,    industry: 'Retail' },\n  'localbakery.com': { size: 12,     industry: 'Food' },\n  'megabank.com':    { size: 90000,  industry: 'Finance' }\n};\n\nfunction hash(s) {\n  let h = 0;\n  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;\n  return Math.abs(h);\n}\n\nlet enriched;\nlet source;\nif (fixtures[domain]) {\n  enriched = fixtures[domain];\n  source = 'fixture';\n} else {\n  const h = hash(domain);\n  const sizeBuckets = [25, 200, 2500];\n  const industries  = ['Tech', 'Finance', 'Healthcare', 'Retail', 'Other'];\n  enriched = {\n    size:     sizeBuckets[h % sizeBuckets.length],\n    industry: industries[h % industries.length]\n  };\n  source = 'simulated';\n}\n\nreturn {\n  json: {\n    ...$input.item.json,\n    enrichment: {\n      companySize: enriched.size,\n      industry:    enriched.industry,\n      source\n    }\n  }\n};"
+      },
+      "id": "node-enrich",
+      "name": "Enrich (Clearbit-mock)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lead scoring per spec:\n//   Company size: 1-50 = 1pt, 51-500 = 3pt, 500+ = 5pt\n//   Industry:     Tech = 3pt,  others = 1pt\n//   High tier: >=6, Medium: 3-5, Low: <3\n\nconst { companySize, industry } = $input.item.json.enrichment;\n\nlet sizePoints;\nif (companySize <= 50)       sizePoints = 1;\nelse if (companySize <= 500) sizePoints = 3;\nelse                         sizePoints = 5;\n\nconst industryPoints = industry === 'Tech' ? 3 : 1;\nconst total = sizePoints + industryPoints;\n\nlet tier;\nif (total >= 6)      tier = 'high';\nelse if (total >= 3) tier = 'medium';\nelse                 tier = 'low';\n\nreturn {\n  json: {\n    ...$input.item.json,\n    score: { sizePoints, industryPoints, total, tier }\n  }\n};"
+      },
+      "id": "node-score",
+      "name": "Score Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Logging in parallel\n\nSheets is a sibling of the Switch, not upstream of it. A Sheets failure can't break routing, and routing latency doesn't depend on Sheets latency. Replays for missed logs are driven from a separate Error Trigger workflow (not shown \u2014 production add).",
+        "height": 230,
+        "width": 260,
+        "color": 5
+      },
+      "id": "sticky-log",
+      "name": "Parallel logging",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1060,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const i = $input.item.json;\nreturn { json: {\n  email: i.email,\n  receivedAt: i.receivedAt,\n  name: i.name,\n  company: i.company,\n  domain: i.domain,\n  companySize: i.enrichment.companySize,\n  industry: i.enrichment.industry,\n  score: i.score.total,\n  tier: i.score.tier\n}};"
+      },
+      "id": "node-format-sheets",
+      "name": "Format for Sheets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        380
+      ],
+      "notes": "Flattens the lead data to the exact 9 columns the sheet wants. Without this, n8n auto-creates headers from full upstream JSON (which includes nested 'enrichment' / 'score' objects + the 'valid' flag), and subsequent appends detect column drift and fail."
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1E9G-dx_DXJgqxlmwpH1jodo-8F9aqphk7r8LWvUlcls",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Leads",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "email": "={{ $json.email }}",
+            "receivedAt": "={{ $json.receivedAt }}",
+            "name": "={{ $json.name }}",
+            "company": "={{ $json.company }}",
+            "domain": "={{ $json.domain }}",
+            "companySize": "={{ $json.companySize }}",
+            "industry": "={{ $json.industry }}",
+            "score": "={{ $json.score }}",
+            "tier": "={{ $json.tier }}"
+          },
+          "matchingColumns": [
+            "email"
+          ],
+          "schema": [
+            {
+              "id": "email",
+              "displayName": "email",
+              "type": "string",
+              "required": true,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "receivedAt",
+              "displayName": "receivedAt",
+              "type": "string",
+              "required": false
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "type": "string",
+              "required": false
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "type": "string",
+              "required": false
+            },
+            {
+              "id": "domain",
+              "displayName": "domain",
+              "type": "string",
+              "required": false
+            },
+            {
+              "id": "companySize",
+              "displayName": "companySize",
+              "type": "number",
+              "required": false
+            },
+            {
+              "id": "industry",
+              "displayName": "industry",
+              "type": "string",
+              "required": false
+            },
+            {
+              "id": "score",
+              "displayName": "score",
+              "type": "number",
+              "required": false
+            },
+            {
+              "id": "tier",
+              "displayName": "tier",
+              "type": "string",
+              "required": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-sheets",
+      "name": "Log to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        1080,
+        380
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleApi": {
+          "id": "K9H3wuni5wPX5GmT",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Uses email as the dedupe key (appendOrUpdate). Re-submitting the same lead updates the row instead of duplicating it. onError=continueRegularOutput means a Sheets failure passes input through unchanged (so routing keeps working) \u2014 in production, an Error Trigger workflow catches the escape and queues a retry."
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.score.tier }}",
+                    "rightValue": "high",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "high"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.score.tier }}",
+                    "rightValue": "medium",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "medium"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.score.tier }}",
+                    "rightValue": "low",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "low"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-switch",
+      "name": "Route by Tier",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1320,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "accessToken",
+        "resource": "message",
+        "operation": "post",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "#sales-leads",
+          "mode": "name"
+        },
+        "text": "=:rocket: *High-priority lead*\n*{{ $json.name }}* from *{{ $json.company }}* ({{ $json.enrichment.companySize }} employees, {{ $json.enrichment.industry }})\nScore: *{{ $json.score.total }}*  |  Email: {{ $json.email }}",
+        "otherOptions": {}
+      },
+      "id": "node-slack",
+      "name": "Slack: Notify Sales",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        1580,
+        200
+      ],
+      "credentials": {
+        "slackApi": {
+          "id": "J7PU76oqiMICOCd9",
+          "name": "Slack account"
+        }
+      },
+      "notes": "Continue On Fail = true so a Slack outage doesn't block the CRM deal. onError=continueRegularOutput preserves input data on failure (vs Continue On Fail which replaces it with the error object).",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/deals",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"properties\": {\n    \"dealname\": \"{{ $json.company }} \u2014 inbound (score {{ $json.score.total }})\",\n    \"pipeline\": \"default\",\n    \"dealstage\": \"appointmentscheduled\"\n  }\n}",
+        "options": {}
+      },
+      "id": "node-crm",
+      "name": "CRM: Create Deal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1580,
+        380
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "hubspot-private-app",
+          "name": "HubSpot Private App"
+        }
+      },
+      "notes": "Example uses HubSpot. Replace URL/payload for Salesforce/Pipedrive/etc.\nCredential: HTTP Header Auth named 'HubSpot Private App'. onError=continueRegularOutput preserves input data on failure (vs Continue On Fail which replaces it with the error object).",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://us6.api.mailchimp.com/3.0/lists/efb77060bc/members",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"email_address\": \"{{ $json.email }}\",\n  \"status\": \"subscribed\",\n  \"merge_fields\": {\n    \"FNAME\": \"{{ $json.name.split(' ')[0] }}\",\n    \"COMPANY\": \"{{ $json.company }}\"\n  },\n  \"tags\": [\"nurture\", \"medium-tier\"]\n}",
+        "options": {}
+      },
+      "id": "node-nurture",
+      "name": "Add to Nurture Campaign",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1580,
+        540
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "mailchimp-basic-auth",
+          "name": "Mailchimp Basic Auth"
+        }
+      },
+      "notes": "Mailchimp 'add to list' API. Auth = Basic, username='anystring', password=API key. Server prefix us6 derived from API key suffix. List ID efb77060bc. onError=continueRegularOutput preserves input data on failure (vs Continue On Fail which replaces it with the error object).",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "fromEmail": "bestcoderis@gmail.com",
+        "toEmail": "={{ $json.email }}",
+        "subject": "=Resources for {{ $json.name.split(' ')[0] }}",
+        "emailFormat": "html",
+        "html": "=<p>Hi {{ $json.name.split(' ')[0] }},</p>\n<p>Thanks for your interest! Here are some resources we think you'll find useful:</p>\n<ul>\n  <li><a href=\"https://example.com/getting-started\">Getting Started Guide</a></li>\n  <li><a href=\"https://example.com/case-studies\">Customer Case Studies</a></li>\n  <li><a href=\"https://example.com/pricing\">Pricing</a></li>\n</ul>\n<p>\u2014 The Team</p>",
+        "options": {}
+      },
+      "id": "node-email",
+      "name": "Email: Send Resources",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1580,
+        700
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "gmail-smtp",
+          "name": "Gmail SMTP"
+        }
+      },
+      "notes": "SMTP credential. Gmail SMTP via app password (smtp.gmail.com:465 SSL). For production use SendGrid/Postmark. onError=continueRegularOutput preserves input data on failure (vs Continue On Fail which replaces it with the error object).",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"ok\",\n  \"email\": \"{{ $('Score Lead').item.json.email }}\",\n  \"score\": {{ $('Score Lead').item.json.score.total }},\n  \"tier\": \"{{ $('Score Lead').item.json.score.tier }}\",\n  \"actions\": {{ JSON.stringify($('Score Lead').item.json.score.tier === 'high' ? ['slack','crm_deal'] : $('Score Lead').item.json.score.tier === 'medium' ? ['nurture'] : ['resources_email']) }}\n}",
+        "options": {}
+      },
+      "id": "node-respond",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1860,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-valid",
+      "name": "Is Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        540,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"error\",\n  \"error\": \"{{ $json.error }}\"\n}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "node-respond-error",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        780,
+        580
+      ]
+    }
+  ],
+  "connections": {
+    "Receive Lead": {
+      "main": [
+        [
+          {
+            "node": "Validate & Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & Normalize": {
+      "main": [
+        [
+          {
+            "node": "Is Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich (Clearbit-mock)": {
+      "main": [
+        [
+          {
+            "node": "Score Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Lead": {
+      "main": [
+        [
+          {
+            "node": "Format for Sheets",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Route by Tier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format for Sheets": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Google Sheets": {
+      "main": [
+        []
+      ]
+    },
+    "Route by Tier": {
+      "main": [
+        [
+          {
+            "node": "Slack: Notify Sales",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "CRM: Create Deal",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add to Nurture Campaign",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: Send Resources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Notify Sales": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CRM: Create Deal": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add to Nurture Campaign": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: Send Resources": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Valid?": {
+      "main": [
+        [
+          {
+            "node": "Enrich (Clearbit-mock)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "active": false,
+  "tags": [
+    {
+      "name": "interview"
+    },
+    {
+      "name": "lead-routing"
+    }
+  ]
+}
