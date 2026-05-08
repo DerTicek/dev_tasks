@@ -1,0 +1,65 @@
+:root {
+  color-scheme: light dark;
+}
+
+.stage {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #fff;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 20% 25%, #ff7a59 0 12%, transparent 13%),
+    radial-gradient(circle at 78% 18%, #6ad1ff 0 10%, transparent 11%),
+    radial-gradient(circle at 65% 70%, #ffd166 0 14%, transparent 15%),
+    radial-gradient(circle at 30% 80%, #a06bff 0 11%, transparent 12%),
+    repeating-linear-gradient(45deg, #1a1f3c 0 24px, #2a3266 24px 48px),
+    linear-gradient(135deg, #0f172a, #1e293b 40%, #312e81);
+}
+
+.draggable {
+  position: absolute;
+  z-index: 1;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  will-change: transform, left, top;
+}
+
+.draggable:active {
+  cursor: grabbing;
+}
+
+.label {
+  color: #fff;
+  font-weight: 600;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+  user-select: none;
+}
+
+.hint {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  max-width: 560px;
+  text-align: center;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+  margin: 0;
+}

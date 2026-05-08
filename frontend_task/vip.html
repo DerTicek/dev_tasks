@@ -7,12 +7,16 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=arch-liquid-23">
   </head>
-  <body class="vip-page">
+  <body class="vip-page vip-liquid-glass-fallback">
+    <svg class="vip-liquid-defs" xmlns="http://www.w3.org/2000/svg" width="0" height="0" aria-hidden="true" focusable="false" color-interpolation-filters="sRGB">
+      <defs id="vip-liquid-glass-defs"></defs>
+    </svg>
+
     <main class="page-stack">
       <section class="screen frame-ceo" aria-label="CEO partnership message">
-        <article class="glass-card ceo-copy">
+        <article class="glass-card ceo-copy vip-liquid-glass">
           <h1>We build lifelong partnerships.</h1>
           <p>
             That is our biggest goal.<br>
@@ -35,7 +39,7 @@
         <div class="ceo-photo">
           <img src="assets/ceo.png" alt="Khalid, CEO">
         </div>
-        <a class="qualify-button ceo-button" href="#">See if you qualify</a>
+        <a class="qualify-button ceo-button" href="#"><span class="pill-rim" aria-hidden="true"></span>See if you qualify</a>
       </section>
 
       <section class="screen frame-dubai" aria-label="Elite incorporation video">
@@ -44,13 +48,14 @@
           <span class="play-button" aria-hidden="true"></span>
         </div>
 
-        <article class="glass-card dubai-copy">
+        <article class="glass-card dubai-copy vip-liquid-glass">
           <h1>Elite Incorporation Solutions: VIP handling, Utmost privacy, Expert Local Support</h1>
           <p>Watch this video, where the founder reveals how to get your UAE setup RIGHT.</p>
-          <a class="qualify-button" href="#">See if you qualify</a>
+          <a class="qualify-button" href="#"><span class="pill-rim" aria-hidden="true"></span>See if you qualify</a>
         </article>
 
-        <div class="reviews-pill" aria-label="Five star Google reviews">
+        <div class="reviews-pill vip-liquid-glass" aria-label="Five star Google reviews">
+          <span class="pill-rim" aria-hidden="true"></span>
           <div class="reviews-content">
             <img class="google-logo" src="assets/google-white-icon.webp" alt="Google">
             <span class="stars" aria-hidden="true">&#9733;&#9733;&#9733;&#9733;&#9733;</span>
@@ -59,5 +64,6 @@
         </div>
       </section>
     </main>
+    <script src="scripts/vip-liquid-glass.js?v=arch-liquid-8"></script>
   </body>
 </html>

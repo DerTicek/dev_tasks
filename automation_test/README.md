@@ -1,6 +1,6 @@
 # Lead Enrichment & Routing — n8n
 
-This is my submission for **Task 1** of the automation entry test. A complete, runnable n8n workflow that ingests leads via webhook, enriches them, scores them, logs to Google Sheets in parallel with routing, and dispatches to Slack/CRM/email/nurture based on score.
+This is my submission for **Task 1** of the automation entry test. A complete, runnable n8n workflow that ingests leads via webhook, enriches them with a Clearbit-compatible mock API, scores them, logs to Google Sheets in parallel with routing, and dispatches to Slack/CRM/email/nurture based on score.
 
 ## Why I picked Task 1
 
@@ -20,7 +20,7 @@ n8n is a self-hostable workflow automation tool — think Zapier, but the workfl
 
 ```bash
 # 1. Boot n8n (Docker)
-cd /Users/adrian/Downloads/automation_test
+cd /Users/adrian/kontenzy/dev_tasks/automation_test
 docker compose up -d
 
 # 2. Open the editor and create the owner account on first run
@@ -28,13 +28,14 @@ open http://localhost:5678
 
 # 3. Import the workflow
 #    Top-right menu → Import from File → workflow.json
+#    The imported workflow is named "Lead Enrichment & Routing (Mock Clearbit API)".
 
 # 4. Activate the workflow
 #    Click the "Publish" button in the top-right corner of the editor.
 #    (Older n8n tutorials call this an "Active" toggle — same thing,
 #    renamed in recent versions. The webhook only registers once published.)
 
-# 5. Fire the test fixtures
+# 5. Fire the sample payloads
 ./test/send-test.sh all
 ```
 
@@ -43,18 +44,20 @@ open http://localhost:5678
 ## What "running" looks like
 
 ```
-HIGH  → 200  {"status":"ok","email":"sara@stripe.com","score":8,"tier":"high","actions":["slack","crm_deal"]}
-MED   → 200  {"status":"ok","email":"priya@midmarket.io","score":4,"tier":"medium","actions":["nurture"]}
-LOW   → 200  {"status":"ok","email":"tom@localbakery.com","score":2,"tier":"low","actions":["resources_email"]}
+HIGH  → 200  {"status":"ok","email":"sara@stripe.com","enrichment":{"companySize":8000,"industry":"Tech","source":"mock_api_fixture"},"score":8,"tier":"high","actions":["slack","crm_deal"]}
+MED   → 200  {"status":"ok","email":"priya@midmarket.io","enrichment":{"companySize":200,"industry":"Retail","source":"mock_api_fixture"},"score":4,"tier":"medium","actions":["nurture"]}
+LOW   → 200  {"status":"ok","email":"tom@localbakery.com","enrichment":{"companySize":12,"industry":"Food","source":"mock_api_fixture"},"score":2,"tier":"low","actions":["resources_email"]}
 BAD   → 400  {"status":"error","error":"Missing required fields: name, email, company"}
 ```
+
+The mock API returns deterministic Clearbit-shaped company data for the sample domains, so the demo tiers are stable. Unknown domains get a deterministic fallback with `source: "mock_api_simulated"`. If the mock API is unavailable, the workflow degrades to `source: "mock_api_unavailable"`, `companySize: 0`, and `industry: "Unknown"` so routing still completes.
 
 ## Architecture
 
 ```
                                                     ┌─► Format for Sheets ─► Log to Sheets (parallel, leaf)
                                                     │
-Webhook → Validate → IF (valid?) ─→ Enrich → Score ─┤
+Webhook → Validate → IF (valid?) ─→ Mock Clearbit API → Map Enrichment → Score ─┤
                     └─► Respond 400                 │
                                                     └──► Switch ─┬─► [HIGH]   Slack + CRM Deal ──┐
                                                                  ├─► [MED]    Nurture           ─┼─► Respond 200
@@ -68,29 +71,45 @@ Webhook → Validate → IF (valid?) ─→ Enrich → Score ─┤
 - **A small `Format for Sheets` Code node before the Sheets node.** n8n's Sheets node auto-creates headers from the full upstream JSON on first write — including nested objects (`enrichment`, `score`) and the `valid` flag added by validation — which then trips a column-drift error on subsequent appends. Pinning the shape upstream to exactly the 9 columns the sheet wants is cleaner than coercing the Sheets node into ignoring extra fields.
 - **`onError: continueRegularOutput` on every external call.** A flaky CRM API doesn't cascade through the rest of the workflow.
 - **Respond reads via node-name reference (`$('Score Lead').item.json...`), not `$json`.** This is the subtle but critical move: even if Slack returns an error object, the response still has the correct lead data — Respond pulls it from the known-good Score Lead output, not from whatever the failing upstream branch produced.
-- **Clearbit is simulated, not faked.** A Code node with a hand-curated fixtures map for demoable domains plus a deterministic hash fallback. The doc comment shows exactly which HTTP Request node would replace it in production. (The test explicitly allows simulating external APIs.)
+- **Clearbit is simulated with a mock API, not hidden in a Code node.** `Enrich with Mock Clearbit API` calls the local `mock-clearbit` service by domain, then `Map Mock Enrichment` normalizes the Clearbit-shaped payload to the compact `{companySize, industry, source}` shape the scoring node expects. This satisfies the "simulate with mock API" path while keeping a realistic integration boundary.
 - **Score is computed in code, not a chain of IFs.** One auditable Code node with the rubric inlined as comments — easier to review, easier to change when sales rewrites the rubric.
 - **Switch over nested IFs.** Three labelled outputs (`high`/`medium`/`low`), one routing node.
 
-## Wiring up real credentials
+## Mock API and credentials
 
-The workflow ships with `onError: continueRegularOutput` on every external integration, so it runs end-to-end with **zero credentials** and you still see all four response shapes. But for the live demo, all five integrations below are wired with real accounts. Each one takes 3–10 minutes the first time. Credentials are created in the n8n UI under **Credentials** in the left sidebar, then referenced by the corresponding node — you don't have to edit `workflow.json`.
+The workflow ships with `onError: continueRegularOutput` on every external integration, so it runs end-to-end even if one service is missing. For the live demo, the five external integrations below can be wired with real accounts; Clearbit is handled by the included mock API service. Credentials are created in the n8n UI under **Credentials** in the left sidebar, then referenced by the corresponding node — you don't have to edit `workflow.json`.
 
 > Heads up: every node in this workflow uses `onError: continueRegularOutput`, which means a misconfigured credential won't blow up the response — the webhook still returns 200 with a valid `actions` array. So a passing `send-test.sh` is **not** proof the integrations actually fired. Verify by checking the destination system (the Sheet, the Slack channel, the HubSpot Deals view, etc.) after each test.
 
-### 1. Google Sheets (~3 min) — log every lead
+### 1. Mock Clearbit API — enrich leads by company domain
+
+Docker Compose starts a local `mock-clearbit` service on port `3030`. The workflow's `Enrich with Mock Clearbit API` node calls:
+
+```text
+GET http://127.0.0.1:3030/v2/companies/find?domain=<domain>
+```
+
+To verify it directly:
+
+```bash
+curl "http://localhost:3030/v2/companies/find?domain=stripe.com" | jq .
+```
+
+To verify it through n8n, run `./test/send-test.sh high`, open the latest execution, and click `Enrich with Mock Clearbit API`. The response should include Clearbit-like fields such as `metrics.employees` and `category.industry`. Then click `Map Mock Enrichment` and confirm `enrichment.source` is `mock_api_fixture`.
+
+### 2. Google Sheets (~3 min) — log every lead
 
 1. Create a Google Sheet, add a tab named `Leads`. Copy the spreadsheet ID from the URL (the long string between `/d/` and `/edit`).
 2. Open the `Log to Google Sheets` node → paste the spreadsheet ID into `Document ID`.
 3. Click `Credential to connect with` → `Create new credential` → `Sign in with Google` → grant access.
 4. The first lead through writes the header row automatically.
 
-### 2. Slack (~5 min) — notify sales on high-tier leads
+### 3. Slack (~5 min) — notify sales on high-tier leads
 
 1. Open the `Slack: Notify Sales` node → `Credential` → `Create new credential` → `Sign in with Slack` and authorize the workspace.
 2. Change the channel from `#sales-leads` to one that exists in your workspace (the bot must be a member of it — invite it with `/invite @your-bot-name` from inside the channel).
 
-### 3. HubSpot CRM (~10 min) — create deals on high-tier leads
+### 4. HubSpot CRM (~10 min) — create deals on high-tier leads
 
 1. In HubSpot → `Settings` → `Integrations` → `Private Apps` → `Create a private app`. Give it a name, then under **Scopes** enable `crm.objects.deals.write` (and optionally `crm.objects.contacts.write` if you later extend the workflow to create contacts and associate them).
 2. Copy the access token HubSpot generates.
@@ -98,14 +117,14 @@ The workflow ships with `onError: continueRegularOutput` on every external integ
 4. The `CRM: Create Deal` HTTP Request node already references this credential by name — no node-side change needed.
 5. **Gotcha I hit:** the Deals object doesn't have a `contact_email` property (that's a Contacts-only field). The current body only sends `dealname`, `pipeline: "default"`, `dealstage: "appointmentscheduled"`. If you want to attach the lead's email to the deal in production, you'd POST to `/crm/v3/objects/contacts` first, then create an association — two-step write.
 
-### 4. Mailchimp (~5 min) — drop medium-tier leads into a nurture list
+### 5. Mailchimp (~5 min) — drop medium-tier leads into a nurture list
 
 1. In Mailchimp → `Account` → `Extras` → `API keys` → generate a new key. Note the suffix after the dash (e.g. `-us6`) — that's your **server prefix** and you need it for the API URL.
 2. Note your **audience ID**: `Audience` → `Settings` → `Audience name and defaults` → "Audience ID".
 3. In n8n → `Credentials` → `New` → **Basic Auth**. Username can be anything (e.g. `anystring`), password is the API key. Save as `Mailchimp Basic Auth`.
 4. Open the `Nurture: Mailchimp Subscribe` node → confirm the URL uses your server prefix (`https://<prefix>.api.mailchimp.com/3.0/lists/<audience-id>/members`).
 
-### 5. Gmail SMTP (~5 min) — send the resources email to low-tier leads
+### 6. Gmail SMTP (~5 min) — send the resources email to low-tier leads
 
 1. In your Google Account → `Security` → enable 2-Step Verification (required to generate app passwords) → `App passwords` → generate one for "Mail". Copy the 16-character password.
 2. In n8n → `Credentials` → `New` → **SMTP**. Host: `smtp.gmail.com`, Port: `465`, SSL: on. Username: the **full Gmail address** of the account that generated the app password. Password: the app password.
@@ -124,8 +143,8 @@ The workflow ships with `onError: continueRegularOutput` on every external integ
 - **Retries with exponential backoff** on the HTTP nodes (n8n built-in, just enable).
 - **Dead-letter queue:** an Error Trigger workflow that catches anything that escapes `continueRegularOutput`, writes to a "stuck leads" sheet, pages oncall.
 - **Replay workflow** on a cron that drains the stuck-leads sheet and retries.
-- **Real Clearbit + a Redis cache** so we don't burn API credits on duplicate domains.
-- **A test workflow** that fires fixtures at the webhook and asserts response shape — runnable in CI via the n8n CLI.
+- **Swap the mock endpoint for real Clearbit + Redis cache** so production uses live enrichment without burning API credits on duplicate domains.
+- **A test workflow** that fires sample payloads at the webhook and asserts response shape — runnable in CI via the n8n CLI.
 - **Secret hygiene:** all keys live in n8n credentials, never in node parameters.
 
 ## File layout
@@ -134,8 +153,9 @@ The workflow ships with `onError: continueRegularOutput` on every external integ
 .
 ├── README.md             ← you are here
 ├── walkthrough.md        ← script for the live interview demo
-├── workflow.json         ← importable n8n workflow (15 nodes)
-├── docker-compose.yml    ← spins up n8n locally
+├── workflow.json         ← importable n8n workflow (17 nodes)
+├── docker-compose.yml    ← spins up n8n + mock Clearbit locally
+├── mock-clearbit-api.js  ← deterministic Clearbit-compatible mock API
 └── test/
     ├── leads.json        ← sample payloads with explanations
     └── send-test.sh      ← curl them at the webhook

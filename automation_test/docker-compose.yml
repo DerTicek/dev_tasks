@@ -13,8 +13,21 @@ services:
       - GENERIC_TIMEZONE=UTC
       - N8N_DIAGNOSTICS_ENABLED=false
       - N8N_PERSONALIZATION_ENABLED=false
+      - MOCK_CLEARBIT_URL=http://mock-clearbit:3030
     volumes:
       - n8n_data:/home/node/.n8n
+    depends_on:
+      - mock-clearbit
+
+  mock-clearbit:
+    image: node:20-alpine
+    container_name: mock-clearbit
+    restart: unless-stopped
+    ports:
+      - "3030:3030"
+    command: ["node", "/app/mock-clearbit-api.js"]
+    volumes:
+      - ./mock-clearbit-api.js:/app/mock-clearbit-api.js:ro
 
 volumes:
   n8n_data:

@@ -1,19 +1,19 @@
 {
-  "_note": "These payloads hit the fixtures map in the Enrich node, so each is guaranteed to score into the labelled tier.",
+  "_note": "These payloads hit deterministic fixtures in the mock Clearbit API, so each labelled tier is stable for the demo.",
 
   "high_tier": {
     "payload": { "name": "Sara Patel", "email": "sara@stripe.com", "company": "Stripe" },
-    "expected": "stripe.com → 8000 employees (5pt) + Tech (3pt) = 8 → HIGH → Slack + CRM Deal"
+    "expected": "stripe.com → mock API fixture → 8000 employees (5pt) + Tech (3pt) = 8 → HIGH → Slack + CRM Deal"
   },
 
   "medium_tier": {
     "payload": { "name": "Priya Shah", "email": "priya@midmarket.io", "company": "MidMarket" },
-    "expected": "midmarket.io → 200 employees (3pt) + Retail (1pt) = 4 → MEDIUM → Nurture campaign"
+    "expected": "midmarket.io → mock API fixture → 200 employees (3pt) + Retail (1pt) = 4 → MEDIUM → Nurture campaign"
   },
 
   "low_tier": {
     "payload": { "name": "Tom Berger", "email": "tom@localbakery.com", "company": "Local Bakery" },
-    "expected": "localbakery.com → 12 employees (1pt) + Food (1pt) = 2 → LOW → Resources email"
+    "expected": "localbakery.com → mock API fixture → 12 employees (1pt) + Food (1pt) = 2 → LOW → Resources email"
   },
 
   "invalid": {

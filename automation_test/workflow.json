@@ -1,10 +1,10 @@
 {
   "id": "lead-routing-v1",
-  "name": "Lead Enrichment & Routing",
+  "name": "Lead Enrichment & Routing (Mock Clearbit API)",
   "nodes": [
     {
       "parameters": {
-        "content": "## Lead Enrichment & Routing\n\n**Trigger:** POST `/webhook/lead-intake`\n\n**Pipeline:**\n1. Validate (returns `valid: bool`, never throws)\n2. IF: invalid \u2192 respond 400 immediately\n3. Enrich via Clearbit (simulated \u2014 see Code node)\n4. Score (company size + industry)\n5. Score fans out \u2192 **Sheets log** (parallel) AND **Switch**\n6. Switch routes by tier:\n   - **High (\u22656):** Slack + CRM deal\n   - **Medium (3\u20135):** add to nurture\n   - **Low (<3):** resources email\n7. Respond with routing decision (reads `$('Score Lead')` so a failing branch can't break the response)\n\n**Resilience:**\n- `onError: continueRegularOutput` on every external call \u2192 one failure doesn't cascade\n- Logging is parallel, not serial \u2192 response time is `max(log, route)`, not `log + route`\n- Respond uses node-name reference \u2192 branch failure \u2260 broken response",
+        "content": "## Lead Enrichment & Routing\n\n**Trigger:** POST `/webhook/lead-intake`\n\n**Pipeline:**\n1. Validate (returns `valid: bool`, never throws)\n2. IF: invalid \u2192 respond 400 immediately\n3. Enrich via a Clearbit-compatible mock API, then normalize the payload\n4. Score (company size + industry)\n5. Score fans out \u2192 **Sheets log** (parallel) AND **Switch**\n6. Switch routes by tier:\n   - **High (\u22656):** Slack + CRM deal\n   - **Medium (3\u20135):** add to nurture\n   - **Low (< 3):** resources email\n7. Respond with routing decision (reads `$('Score Lead')` so a failing branch can't break the response)\n\n**Resilience:**\n- `onError: continueRegularOutput` on every external call \u2192 one failure doesn't cascade\n- Mock API misses degrade to Unknown enrichment instead of blocking routing\n- Logging is parallel, not serial \u2192 response time is `max(log, route)`, not `log + route`\n- Respond uses node-name reference \u2192 branch failure \u2260 broken response",
         "height": 460,
         "width": 480,
         "color": 4
@@ -50,20 +50,47 @@
     },
     {
       "parameters": {
-        "jsCode": "// SIMULATED Clearbit enrichment.\n//\n// Production swap: replace this Code node with an HTTP Request node:\n//   GET https://company.clearbit.com/v2/companies/find?domain={{$json.domain}}\n//   Authorization: Bearer {{$credentials.clearbit.apiKey}}\n//   Continue On Fail: true (so the workflow degrades gracefully)\n// Then a small Set node maps Clearbit's response to {companySize, industry}.\n\nconst { domain } = $input.item.json;\n\n// Hand-curated fixtures so the demo always hits the right tier when needed.\nconst fixtures = {\n  'google.com':      { size: 150000, industry: 'Tech' },\n  'stripe.com':      { size: 8000,   industry: 'Tech' },\n  'acme.io':         { size: 75,     industry: 'Tech' },\n  'midmarket.io':    { size: 200,    industry: 'Retail' },\n  'localbakery.com': { size: 12,     industry: 'Food' },\n  'megabank.com':    { size: 90000,  industry: 'Finance' }\n};\n\nfunction hash(s) {\n  let h = 0;\n  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;\n  return Math.abs(h);\n}\n\nlet enriched;\nlet source;\nif (fixtures[domain]) {\n  enriched = fixtures[domain];\n  source = 'fixture';\n} else {\n  const h = hash(domain);\n  const sizeBuckets = [25, 200, 2500];\n  const industries  = ['Tech', 'Finance', 'Healthcare', 'Retail', 'Other'];\n  enriched = {\n    size:     sizeBuckets[h % sizeBuckets.length],\n    industry: industries[h % industries.length]\n  };\n  source = 'simulated';\n}\n\nreturn {\n  json: {\n    ...$input.item.json,\n    enrichment: {\n      companySize: enriched.size,\n      industry:    enriched.industry,\n      source\n    }\n  }\n};"
+        "method": "GET",
+        "url": "=http://127.0.0.1:3030/v2/companies/find?domain={{ $json.domain }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
       },
       "id": "node-enrich",
-      "name": "Enrich (Clearbit-mock)",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "name": "Enrich with Mock Clearbit API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
         640,
         380
-      ]
+      ],
+      "notes": "Calls the local Clearbit-compatible mock API by domain at http://127.0.0.1:3030. onError=continueRegularOutput lets the mapper degrade to Unknown enrichment if the mock API is unavailable.",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "jsCode": "// Lead scoring per spec:\n//   Company size: 1-50 = 1pt, 51-500 = 3pt, 500+ = 5pt\n//   Industry:     Tech = 3pt,  others = 1pt\n//   High tier: >=6, Medium: 3-5, Low: <3\n\nconst { companySize, industry } = $input.item.json.enrichment;\n\nlet sizePoints;\nif (companySize <= 50)       sizePoints = 1;\nelse if (companySize <= 500) sizePoints = 3;\nelse                         sizePoints = 5;\n\nconst industryPoints = industry === 'Tech' ? 3 : 1;\nconst total = sizePoints + industryPoints;\n\nlet tier;\nif (total >= 6)      tier = 'high';\nelse if (total >= 3) tier = 'medium';\nelse                 tier = 'low';\n\nreturn {\n  json: {\n    ...$input.item.json,\n    score: { sizePoints, industryPoints, total, tier }\n  }\n};"
+        "jsCode": "// Map the mock Clearbit-compatible payload back onto the normalized lead shape.\n// The mock API returns Clearbit-like fields so this mapper is the same boundary\n// we would keep if the HTTP node were pointed at the real Clearbit endpoint.\nconst lead = $('Validate & Normalize').item.json;\nconst clearbit = $input.item.json || {};\n\nconst hasCompany = clearbit.found !== false && Boolean(clearbit.metrics || clearbit.category || clearbit.name || clearbit.domain);\n\nfunction employeesFromRange(range) {\n  const ranges = {\n    '1-10': 10,\n    '11-50': 50,\n    '51-250': 250,\n    '251-1K': 1000,\n    '1K-5K': 5000,\n    '5K-10K': 10000,\n    '10K-50K': 50000,\n    '50K-100K': 100000,\n    '100K+': 100000\n  };\n  return ranges[range] || 0;\n}\n\nconst employees = hasCompany\n  ? (Number(clearbit.metrics?.employees ?? 0) || employeesFromRange(clearbit.metrics?.employeesRange) || 0)\n  : 0;\nconst category = hasCompany ? (clearbit.category || {}) : {};\nconst rawIndustry = category.industry || category.industryGroup || category.sector || 'Unknown';\n\nconst signals = [\n  category.sector,\n  category.industryGroup,\n  category.industry,\n  ...(Array.isArray(clearbit.tags) ? clearbit.tags : []),\n  ...(Array.isArray(clearbit.techCategories) ? clearbit.techCategories : [])\n].filter(Boolean).join(' ').toLowerCase();\n\nlet industry = rawIndustry;\nif (/tech|software|internet|saas|cloud|data|security|developer|computer|information technology/.test(signals)) {\n  industry = 'Tech';\n} else if (/finance|bank|insurance|financial/.test(signals)) {\n  industry = 'Finance';\n} else if (/health|medical|biotech|pharma/.test(signals)) {\n  industry = 'Healthcare';\n} else if (/retail|commerce|consumer|food/.test(signals)) {\n  industry = rawIndustry === 'Food' ? 'Food' : 'Retail';\n}\n\nreturn {\n  json: {\n    ...lead,\n    clearbit: hasCompany ? {\n      id: clearbit.id,\n      name: clearbit.name,\n      domain: clearbit.domain,\n      employeesRange: clearbit.metrics?.employeesRange,\n      rawIndustry,\n      mock: clearbit.mock === true\n    } : {\n      error: clearbit.error || clearbit.message || 'No mock company match'\n    },\n    enrichment: {\n      companySize: employees,\n      industry: hasCompany ? industry : 'Unknown',\n      source: hasCompany ? (clearbit.mockSource || 'mock_api') : 'mock_api_unavailable'\n    }\n  }\n};"
+      },
+      "id": "node-map-clearbit",
+      "name": "Map Mock Enrichment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        380
+      ],
+      "notes": "Normalizes the mock Clearbit-shaped payload to enrichment.companySize and enrichment.industry, preserving the original normalized lead for scoring/routing."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lead scoring per spec:\n//   Company size: 1-50 = 1pt, 51-500 = 3pt, 500+ = 5pt\n//   Industry:     Tech = 3pt,  others = 1pt\n//   High tier: >=6, Medium: 3-5, Low: < 3\n\nconst { companySize, industry } = $input.item.json.enrichment;\n\nlet sizePoints;\nif (companySize <= 50)       sizePoints = 1;\nelse if (companySize <= 500) sizePoints = 3;\nelse                         sizePoints = 5;\n\nconst industryPoints = industry === 'Tech' ? 3 : 1;\nconst total = sizePoints + industryPoints;\n\nlet tier;\nif (total >= 6)      tier = 'high';\nelse if (total >= 3) tier = 'medium';\nelse                 tier = 'low';\n\nreturn {\n  json: {\n    ...$input.item.json,\n    score: { sizePoints, industryPoints, total, tier }\n  }\n};"
       },
       "id": "node-score",
       "name": "Score Lead",
@@ -426,7 +453,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={\n  \"status\": \"ok\",\n  \"email\": \"{{ $('Score Lead').item.json.email }}\",\n  \"score\": {{ $('Score Lead').item.json.score.total }},\n  \"tier\": \"{{ $('Score Lead').item.json.score.tier }}\",\n  \"actions\": {{ JSON.stringify($('Score Lead').item.json.score.tier === 'high' ? ['slack','crm_deal'] : $('Score Lead').item.json.score.tier === 'medium' ? ['nurture'] : ['resources_email']) }}\n}",
+        "responseBody": "={\n  \"status\": \"ok\",\n  \"email\": \"{{ $('Score Lead').item.json.email }}\",\n  \"enrichment\": {\n    \"companySize\": {{ $('Score Lead').item.json.enrichment.companySize }},\n    \"industry\": \"{{ $('Score Lead').item.json.enrichment.industry }}\",\n    \"source\": \"{{ $('Score Lead').item.json.enrichment.source }}\"\n  },\n  \"score\": {{ $('Score Lead').item.json.score.total }},\n  \"tier\": \"{{ $('Score Lead').item.json.score.tier }}\",\n  \"actions\": {{ JSON.stringify($('Score Lead').item.json.score.tier === 'high' ? ['slack','crm_deal'] : $('Score Lead').item.json.score.tier === 'medium' ? ['nurture'] : ['resources_email']) }}\n}",
         "options": {}
       },
       "id": "node-respond",
@@ -512,7 +539,18 @@
         ]
       ]
     },
-    "Enrich (Clearbit-mock)": {
+    "Enrich with Mock Clearbit API": {
+      "main": [
+        [
+          {
+            "node": "Map Mock Enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Mock Enrichment": {
       "main": [
         [
           {
@@ -633,7 +671,7 @@
       "main": [
         [
           {
-            "node": "Enrich (Clearbit-mock)",
+            "node": "Enrich with Mock Clearbit API",
             "type": "main",
             "index": 0
           }

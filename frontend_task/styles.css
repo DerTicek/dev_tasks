@@ -10,6 +10,23 @@
   --font-display: "Arial Black", "Impact", system-ui, sans-serif;
   --font-body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-welder-copy: "Inter Display", "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --pill-rim-mask-x: linear-gradient(
+    90deg,
+    transparent 0 3px,
+    rgba(0, 0, 0, 0.35) 10px,
+    #000 20px,
+    #000 calc(100% - 20px),
+    rgba(0, 0, 0, 0.35) calc(100% - 10px),
+    transparent calc(100% - 3px) 100%
+  );
+  --pill-rim-mask-y: linear-gradient(
+    180deg,
+    #000 0 5px,
+    rgba(0, 0, 0, 0.72) 7px,
+    transparent 11px calc(100% - 11px),
+    rgba(0, 0, 0, 0.46) calc(100% - 7px),
+    rgba(0, 0, 0, 0.76) calc(100% - 5px) 100%
+  );
 }
 
 * {
@@ -208,6 +225,23 @@ img {
 
 .frame-process {
   --frame-width: 1120px;
+  --step-width: 16.8%;
+  --step-height: 13.1%;
+  --step-half-width: 8.4%;
+  --step-half-height: 6.55%;
+  --step-left-col: 3.5%;
+  --step-mid-col: 40.1%;
+  --step-right-col: calc(100% - 3.4% - var(--step-width));
+  --step-top-row: 8.1%;
+  --step-bottom-row: 46%;
+  --connector-clear-x: 2.75%;
+  --connector-clear-x-double: 5.5%;
+  --connector-clear-y: 5.08%;
+  --connector-clear-y-double: 10.16%;
+  --salary-width: 51.7%;
+  --salary-height: 23.1%;
+  --salary-left-edge: calc(50% - 25.85%);
+  --salary-center-y: calc(100% - 7.2% - var(--salary-height) + 11.55%);
   aspect-ratio: 927 / 502;
   background: var(--black);
 }
@@ -218,8 +252,8 @@ img {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  width: 16.8%;
-  height: 13.1%;
+  width: var(--step-width);
+  height: var(--step-height);
   padding: 1.15% 1.3%;
   color: var(--white);
   background: var(--red);
@@ -237,18 +271,18 @@ img {
 .step strong {
   margin-left: 5%;
   font-family: var(--font-display);
-  font-size: clamp(26px, 5.1vw, 66px);
+  font-size: clamp(23px, 4.6vw, 59px);
   line-height: 0.82;
 }
 
 .step-one,
 .step-six {
-  left: 3.5%;
+  left: var(--step-left-col);
 }
 
 .step-two,
 .step-five {
-  left: 40.1%;
+  left: var(--step-mid-col);
 }
 
 .step-three,
@@ -259,13 +293,13 @@ img {
 .step-one,
 .step-two,
 .step-three {
-  top: 8.1%;
+  top: var(--step-top-row);
 }
 
 .step-six,
 .step-five,
 .step-four {
-  top: 46%;
+  top: var(--step-bottom-row);
 }
 
 .dash {
@@ -273,9 +307,10 @@ img {
   z-index: 1;
   opacity: 0.96;
   --line-size: clamp(3px, 0.34vw, 4px);
-  --dash-length: clamp(5px, 0.65vw, 8px);
+  --dash-length: clamp(9px, 1vw, 13px);
   --dash-period: clamp(18px, 2.1vw, 28px);
   --dash-gap: calc(var(--dash-period) - var(--dash-length));
+  --dash-pad: calc(var(--dash-gap) / 2);
 }
 
 .dash::before {
@@ -291,61 +326,70 @@ img {
 .dash-bottom-left {
   height: var(--line-size);
   border: 0;
-  background: repeating-linear-gradient(
+  background-image: linear-gradient(
     to right,
-    #f4f4f4 0 var(--dash-length),
-    transparent var(--dash-length) var(--dash-period)
+    transparent 0 var(--dash-pad),
+    #f4f4f4 var(--dash-pad) calc(var(--dash-pad) + var(--dash-length)),
+    transparent calc(var(--dash-pad) + var(--dash-length)) 100%
   );
+  background-position: center;
+  background-repeat: space no-repeat;
+  background-size: var(--dash-period) 100%;
   transform: translateY(-50%);
 }
 
 .dash-top-left {
-  top: 14.65%;
-  left: 23.05%;
-  width: 14.3%;
+  top: calc(var(--step-top-row) + var(--step-half-height));
+  left: calc(var(--step-left-col) + var(--step-width) + var(--connector-clear-x));
+  width: calc(var(--step-mid-col) - var(--step-left-col) - var(--step-width) - var(--connector-clear-x-double));
 }
 
 .dash-top-right {
-  top: 14.65%;
-  left: 59.65%;
-  width: 17.4%;
+  top: calc(var(--step-top-row) + var(--step-half-height));
+  left: calc(var(--step-mid-col) + var(--step-width) + var(--connector-clear-x));
+  width: calc(var(--step-right-col) - var(--step-mid-col) - var(--step-width) - var(--connector-clear-x-double));
 }
 
 .dash-right-down,
 .dash-left-down {
   width: var(--line-size);
   border: 0;
-  background: repeating-linear-gradient(
+  background-image: linear-gradient(
     to bottom,
-    #f4f4f4 0 var(--dash-length),
-    transparent var(--dash-length) var(--dash-period)
+    transparent 0 var(--dash-pad),
+    #f4f4f4 var(--dash-pad) calc(var(--dash-pad) + var(--dash-length)),
+    transparent calc(var(--dash-pad) + var(--dash-length)) 100%
   );
+  background-position: center;
+  background-repeat: no-repeat space;
+  background-size: 100% var(--dash-period);
   transform: translateX(-50%);
 }
 
 .dash-right-down {
-  top: 23.95%;
-  right: 11.8%;
-  height: 19.3%;
+  top: calc(var(--step-top-row) + var(--step-height) + var(--connector-clear-y));
+  right: auto;
+  left: calc(var(--step-right-col) + var(--step-half-width));
+  height: calc(var(--step-bottom-row) - var(--step-top-row) - var(--step-height) - var(--connector-clear-y-double));
 }
 
 .dash-mid-right {
-  top: 52.6%;
-  left: 59.65%;
-  width: 17.4%;
+  top: calc(var(--step-bottom-row) + var(--step-half-height));
+  left: calc(var(--step-mid-col) + var(--step-width) + var(--connector-clear-x));
+  width: calc(var(--step-right-col) - var(--step-mid-col) - var(--step-width) - var(--connector-clear-x-double));
 }
 
 .dash-mid-left {
-  top: 52.6%;
-  left: 23.05%;
-  width: 14.3%;
+  top: calc(var(--step-bottom-row) + var(--step-half-height));
+  left: calc(var(--step-left-col) + var(--step-width) + var(--connector-clear-x));
+  width: calc(var(--step-mid-col) - var(--step-left-col) - var(--step-width) - var(--connector-clear-x-double));
 }
 
 .dash-left-down {
-  top: 61.85%;
-  left: 11.9%;
-  width: 9.9%;
-  height: 20.65%;
+  top: calc(var(--step-bottom-row) + var(--step-height) + var(--connector-clear-y));
+  left: calc(var(--step-left-col) + var(--step-half-width));
+  width: calc(var(--salary-left-edge) - var(--step-left-col) - var(--step-half-width) - var(--connector-clear-x));
+  height: calc(var(--salary-center-y) - var(--step-bottom-row) - var(--step-height) - var(--connector-clear-y));
   background: none;
   transform: none;
   overflow: visible;
@@ -364,28 +408,34 @@ img {
 
 .dash-left-down::before {
   top: 0;
-  bottom: calc(var(--dash-period) * 0.18);
+  bottom: 0;
   left: 0;
   width: var(--line-size);
-  background: repeating-linear-gradient(
-    to bottom,
+  background-image: repeating-linear-gradient(
+    to top,
     #f4f4f4 0 var(--dash-length),
     transparent var(--dash-length) var(--dash-period)
   );
+  background-position: center bottom;
+  background-repeat: repeat-y;
+  background-size: 100% var(--dash-period);
   transform: translateX(-50%);
 }
 
 .dash-left-down::after {
   bottom: 0;
-  left: calc(var(--dash-period) * 0.24);
-  width: calc(100% - var(--dash-period) * 0.24 + var(--line-size) / 2);
+  left: 0;
+  width: 100%;
   height: var(--line-size);
-  background: repeating-linear-gradient(
+  background-image: repeating-linear-gradient(
     to right,
     #f4f4f4 0 var(--dash-length),
     transparent var(--dash-length) var(--dash-period)
   );
-  transform: translateY(50%);
+  background-position: left center;
+  background-repeat: repeat-x;
+  background-size: var(--dash-period) 100%;
+  transform: none;
 }
 
 .salary-callout {
@@ -393,17 +443,25 @@ img {
   left: 50%;
   bottom: 7.2%;
   display: grid;
-  grid-template-rows: auto auto;
-  place-items: center;
-  align-content: center;
-  row-gap: 14%;
+  align-items: center;
+  justify-items: stretch;
+  justify-content: center;
   width: 51.7%;
   height: 23.1%;
-  padding: 2.2% 10% 2.7% 7%;
+  padding: 2.2% 8.5% 2.7%;
   color: var(--red);
   background: var(--white);
   border-radius: 19px 0 0 0;
   transform: translateX(-50%);
+}
+
+.salary-content {
+  display: grid;
+  place-items: center;
+  row-gap: clamp(8px, 1.4vw, 16px);
+  justify-self: center;
+  max-width: 100%;
+  text-align: center;
 }
 
 .salary-callout h2 {
@@ -434,7 +492,7 @@ img {
   right: 3.7%;
   bottom: 8.5%;
   font-family: var(--font-display);
-  font-size: clamp(26px, 5.3vw, 72px);
+  font-size: clamp(23px, 4.8vw, 64px);
   line-height: 0.8;
 }
 
@@ -453,42 +511,17 @@ img {
   position: relative;
   overflow: hidden;
   isolation: isolate;
-  border: 1px solid rgba(255, 255, 255, 0.13);
-  background: rgba(97, 51, 135, 0.36);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    inset 0 -16px 24px rgba(45, 15, 70, 0.12),
-    0 18px 30px rgba(26, 9, 45, 0.18);
-  backdrop-filter: blur(5px) saturate(1.05);
-  -webkit-backdrop-filter: blur(5px) saturate(1.05);
-}
-
-.glass-card::before,
-.reviews-pill::before {
-  content: none;
-}
-
-.glass-card::after,
-.reviews-pill::after {
-  content: "";
-  position: absolute;
-  inset: 1px;
-  z-index: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  box-shadow:
-    inset 1px 1px 0 rgba(255, 255, 255, 0.24),
-    inset -1px -1px 0 rgba(24, 7, 42, 0.14);
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.12), transparent 38%),
-    linear-gradient(315deg, rgba(255, 255, 255, 0.05), transparent 42%);
-  opacity: 0.5;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 18px 30px rgba(26, 9, 45, 0.18);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 .glass-card > *,
 .reviews-pill > * {
   position: relative;
-  z-index: 1;
+  z-index: 2;
 }
 
 .ceo-copy {
@@ -564,11 +597,13 @@ img {
 }
 
 .qualify-button {
+  position: relative;
   display: inline-grid;
   place-items: center;
   min-width: clamp(106px, 15vw, 172px);
   min-height: clamp(35px, 4.6vw, 56px);
   padding: 0 1.6em;
+  border: 1px solid transparent;
   color: var(--white);
   font-size: clamp(9px, 1.2vw, 16px);
   font-weight: 800;
@@ -578,9 +613,38 @@ img {
   white-space: nowrap;
   background: linear-gradient(#d0c6bd, #b9ada4);
   border-radius: 999px;
+  overflow: hidden;
+  isolation: isolate;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.16),
+    0 0 10px rgba(255, 255, 255, 0.12),
     0 8px 14px rgba(20, 5, 36, 0.22);
+}
+
+.qualify-button::before {
+  content: none;
+}
+
+.pill-rim {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border: 1px solid rgba(255, 255, 255, 0.66);
+  border-radius: inherit;
+  pointer-events: none;
+  -webkit-mask-image: var(--pill-rim-mask-y), var(--pill-rim-mask-x);
+  mask-image: var(--pill-rim-mask-y), var(--pill-rim-mask-x);
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+
+.reviews-pill .pill-rim {
+  border-color: rgba(255, 255, 255, 0.56);
 }
 
 .ceo-button {
@@ -667,17 +731,98 @@ img {
   padding: 1.35% 3%;
   text-align: center;
   color: rgba(255, 255, 255, 0.93);
-  border: 1px solid rgba(255, 255, 255, 0.13);
+  border: 1px solid transparent;
   border-radius: 999px;
   overflow: hidden;
   isolation: isolate;
-  background: rgba(97, 51, 135, 0.36);
-  backdrop-filter: blur(5px) saturate(1.05);
-  -webkit-backdrop-filter: blur(5px) saturate(1.05);
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  box-shadow: 0 14px 24px rgba(23, 8, 39, 0.18);
+}
+
+.reviews-pill.vip-liquid-glass {
+  background: transparent;
+}
+
+.vip-liquid-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.vip-liquid-glass {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  contain: paint;
+  transform: translateZ(0);
+}
+
+.vip-liquid-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.vip-liquid-glass::after {
+  content: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  backdrop-filter: var(--vip-liquid-filter, blur(3px)) saturate(1.06);
+  -webkit-backdrop-filter: var(--vip-liquid-filter, blur(3px)) saturate(1.06);
+}
+
+.vip-liquid-glass-ready .vip-liquid-glass::after {
+  content: "";
+}
+
+.vip-liquid-glass::before {
+  z-index: 1;
+  background:
+    linear-gradient(135deg, rgba(145, 92, 181, 0.26), rgba(69, 28, 106, 0.28)),
+    rgba(92, 45, 130, 0.22);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    inset 0 -10px 18px rgba(45, 15, 70, 0.12),
-    0 14px 24px rgba(23, 8, 39, 0.18);
+    inset 0 0 18px -7px rgba(238, 222, 255, 0.58),
+    inset 0 1px 1px rgba(255, 255, 255, 0.24),
+    inset 0 -20px 26px -24px rgba(25, 5, 43, 0.72);
+}
+
+.vip-liquid-glass-fallback .vip-liquid-glass {
+  background:
+    linear-gradient(135deg, rgba(145, 92, 181, 0.28), rgba(69, 28, 106, 0.3)),
+    rgba(92, 45, 130, 0.34);
+  backdrop-filter: blur(3px) saturate(1.06);
+  -webkit-backdrop-filter: blur(3px) saturate(1.06);
+}
+
+.vip-liquid-glass-fallback .vip-liquid-glass::after {
+  content: none;
+}
+
+.vip-liquid-glass-fallback .vip-liquid-glass::before {
+  background:
+    linear-gradient(135deg, rgba(151, 93, 188, 0.22), rgba(53, 18, 89, 0.24)),
+    rgba(89, 38, 128, 0.18);
+}
+
+.vip-liquid-glass-fallback .reviews-pill.vip-liquid-glass {
+  backdrop-filter: blur(3px) saturate(1.06);
+  -webkit-backdrop-filter: blur(3px) saturate(1.06);
+}
+
+.reviews-pill.vip-liquid-glass::before {
+  inset: 0;
+  background:
+    linear-gradient(135deg, rgba(145, 92, 181, 0.26), rgba(69, 28, 106, 0.28)),
+    rgba(92, 45, 130, 0.22);
 }
 
 .reviews-content {
@@ -831,7 +976,7 @@ img {
 
   .step strong {
     margin-left: 0;
-    font-size: 38px;
+    font-size: 34px;
   }
 
   .step-one {
@@ -859,22 +1004,27 @@ img {
   }
 
   .salary-callout {
-    position: static;
+    position: relative;
+    left: auto;
+    bottom: auto;
     order: 7;
     width: 100%;
     height: auto;
     min-height: 0;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto auto;
-    column-gap: 14px;
-    row-gap: 12px;
-    padding: 16px 14px;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    padding: 16px 14px 54px;
     border-radius: 16px 0 0 0;
     transform: none;
   }
 
+  .salary-content {
+    width: 100%;
+    row-gap: 12px;
+    transform: translateY(12px);
+  }
+
   .salary-callout h2 {
-    grid-column: 1 / -1;
     font-size: 21px;
     line-height: 1.1;
     white-space: normal;
@@ -884,16 +1034,13 @@ img {
     min-width: 138px;
     min-height: 36px;
     font-size: 13px;
-    justify-self: center;
   }
 
   .salary-callout strong {
-    position: static;
-    grid-column: 2;
-    grid-row: 2;
-    justify-self: end;
-    align-self: center;
-    font-size: 42px;
+    position: absolute;
+    right: 14px;
+    bottom: 10px;
+    font-size: 37px;
   }
 
   .frame-ceo,
@@ -905,10 +1052,13 @@ img {
   }
 
   .ceo-copy {
-    position: static;
+    position: relative;
+    inset: auto;
     order: 2;
+    z-index: 2;
     width: 100%;
     height: auto;
+    margin-top: -42px;
     padding: 18px;
     border-radius: 22px;
   }
@@ -947,8 +1097,10 @@ img {
   }
 
   .ceo-photo {
-    position: static;
+    position: relative;
+    inset: auto;
     order: 1;
+    z-index: 1;
     width: 100%;
     height: auto;
     aspect-ratio: 4 / 3;
@@ -956,9 +1108,11 @@ img {
   }
 
   .ceo-button {
-    position: static;
+    position: relative;
+    inset: auto;
     order: 3;
     justify-self: center;
+    margin-top: 30px;
     transform: none;
   }
 
@@ -970,7 +1124,9 @@ img {
 
   .dubai-video {
     position: relative;
+    inset: auto;
     order: 1;
+    z-index: 1;
     width: 100%;
     height: auto;
     aspect-ratio: 16 / 10;
@@ -985,11 +1141,12 @@ img {
 
   .reviews-pill {
     position: static;
-    order: 2;
+    order: 3;
     justify-self: center;
     width: 100%;
     max-width: 360px;
     min-height: 0;
+    margin-top: 18px;
     padding: 12px 16px;
   }
 
@@ -1011,10 +1168,13 @@ img {
   }
 
   .dubai-copy {
-    position: static;
-    order: 3;
+    position: relative;
+    inset: auto;
+    order: 2;
+    z-index: 2;
     width: 100%;
     min-height: 0;
+    margin-top: -54px;
     padding: 18px;
     border-radius: 22px;
   }
@@ -1031,6 +1191,30 @@ img {
     margin-bottom: 16px;
     font-size: 14px;
     line-height: 1.4;
+  }
+
+  .vip-liquid-glass {
+    background:
+      linear-gradient(135deg, rgba(145, 92, 181, 0.28), rgba(69, 28, 106, 0.3)),
+      rgba(92, 45, 130, 0.34);
+    backdrop-filter: blur(3px) saturate(1.06);
+    -webkit-backdrop-filter: blur(3px) saturate(1.06);
+  }
+
+  .vip-liquid-glass::after {
+    content: none;
+  }
+
+  .vip-liquid-glass::before {
+    background:
+      linear-gradient(135deg, rgba(151, 93, 188, 0.22), rgba(53, 18, 89, 0.24)),
+      rgba(89, 38, 128, 0.18);
+  }
+
+  .reviews-pill.vip-liquid-glass {
+    background: transparent;
+    backdrop-filter: blur(3px) saturate(1.06);
+    -webkit-backdrop-filter: blur(3px) saturate(1.06);
   }
 }
 
@@ -1077,7 +1261,7 @@ img {
   }
 
   .salary-callout strong {
-    font-size: 38px;
+    font-size: 34px;
   }
 
   .frame-ceo,
