@@ -32,6 +32,8 @@ Vysokoúrovňový kontext systému:
 
 API je RESTové, verzované pod `/v1` a vracia JSON. Všetky stav meniace endpointy vyžadujú hlavičku `Idempotency-Key`, aby opakované klientské pokusy nevytvárali duplicitné rezervácie, platby alebo refundácie.
 
+Pre počiatočnú verziu startupu a daný tím (oddelený frontend tím) je REST bezpečnejšia a rýchlejšia voľba. Ľahko sa cachuje a je štandardom pre integráciu webhookov (Stripe, Twilio). GraphQL by som reálne zvažoval vtedy, ak by sme mali veľmi komplexnú mobilnú aplikáciu na pomalých sieťach, kde by sme potrebovali drasticky znížiť množstvo prenášaných dát (over-fetching) a chceli by sme jedným dopytom stiahnuť profil lekára, jeho recenzie a rovno aj voľné sloty. Súčasný dizajn ale drží payloady zámerne malé, takže REST je plne postačujúci
+
 Hlavné skupiny endpointov:
 
 - `/v1/auth/*` - registrácia, login, refresh, logout, reset hesla, žiadosť lekára.
