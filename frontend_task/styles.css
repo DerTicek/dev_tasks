@@ -697,12 +697,10 @@ img {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 0;
-  height: 0;
-  border-top: clamp(28px, 5.6vw, 74px) solid transparent;
-  border-bottom: clamp(28px, 5.6vw, 74px) solid transparent;
-  border-left: clamp(46px, 8.4vw, 112px) solid rgba(255, 255, 255, 0.96);
-  transform: translate(-38%, -50%);
+  width: clamp(46px, 6.2vw, 82px);
+  aspect-ratio: 80 / 92;
+  background: url("data:image/svg+xml,%3Csvg width='80' height='92' viewBox='0 0 80 92' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M16 12C16 4 25 -1 32 4L71 36C78 42 78 50 71 56L32 88C25 93 16 88 16 80V12Z' fill='white' fill-opacity='.96'/%3E%3C/svg%3E") center / contain no-repeat;
+  transform: translate(-43%, -50%);
   filter: drop-shadow(0 2px 4px rgba(58, 25, 85, 0.12));
 }
 
@@ -736,14 +734,14 @@ img {
 
 .reviews-pill {
   position: absolute;
-  left: 7.15%;
+  left: 8.95%;
   bottom: 13.2%;
   z-index: 3;
   display: grid;
   place-items: center;
   width: 33.6%;
   min-height: 14.3%;
-  padding: 1.35% 3%;
+  padding: 1.35% 1.6%;
   text-align: center;
   color: rgba(255, 255, 255, 0.93);
   border: 1px solid transparent;
@@ -846,7 +844,6 @@ img {
   justify-content: center;
   gap: clamp(7px, 1.2vw, 16px);
   width: max-content;
-  max-width: 100%;
   margin-inline: auto;
 }
 
@@ -867,12 +864,17 @@ img {
 }
 
 .reviews-pill p {
+  flex: 0 0 auto;
   margin: 0;
   min-width: 0;
   font-size: clamp(8px, 1.14vw, 17px);
   font-weight: 900;
   line-height: 1;
   white-space: nowrap;
+}
+
+.reviews-label-short {
+  display: none;
 }
 
 @media (max-width: 900px) {
@@ -1150,9 +1152,7 @@ img {
   }
 
   .play-button {
-    border-top-width: 34px;
-    border-bottom-width: 34px;
-    border-left-width: 54px;
+    width: 52px;
   }
 
   .reviews-pill {
@@ -1160,27 +1160,35 @@ img {
     order: 3;
     justify-self: center;
     width: 100%;
-    max-width: 360px;
-    min-height: 0;
+    max-width: none;
+    min-height: 54px;
     margin-top: 18px;
-    padding: 12px 16px;
+    padding: 13px 16px;
   }
 
   .reviews-content {
-    gap: 8px;
+    gap: 7px;
   }
 
   .google-logo {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
   }
 
   .stars {
-    font-size: 15px;
+    font-size: 13px;
   }
 
   .reviews-pill p {
     font-size: 12px;
+  }
+
+  .reviews-label-long {
+    display: none;
+  }
+
+  .reviews-label-short {
+    display: inline;
   }
 
   .dubai-copy {
@@ -1280,6 +1288,10 @@ img {
     font-size: 14px;
   }
 
+  .salary-content {
+    transform: translateY(16px);
+  }
+
   .salary-callout strong {
     font-size: 34px;
   }
@@ -1300,14 +1312,15 @@ img {
   }
 
   .reviews-pill {
-    padding: 11px 12px;
+    min-height: 56px;
+    padding: 13px 12px;
   }
 
   .stars {
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .reviews-pill p {
-    font-size: 11px;
+    font-size: 12px;
   }
 }
