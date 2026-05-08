@@ -216,9 +216,46 @@ Neúspešný pokus o už obsadený slot:
 
 ## 4. Databázový model
 
+Logický ER prehľad hlavných tabuliek:
+
+```mermaid
+erDiagram
+    users ||--o| patients : "patient profil"
+    users ||--o| doctors : "doctor profil"
+    users ||--o{ refresh_tokens : "session tokeny"
+    users ||--o{ notifications : "prijima"
+    users ||--o{ audit_log : "vykonava akcie"
+    users ||--o{ idempotency_keys : "posiela requesty"
+
+    doctors ||--o{ doctor_documents : "nahrava KYC"
+    doctors ||--o{ doctor_specialties : "ma"
+    specialties ||--o{ doctor_specialties : "je priradena"
+    doctors ||--o{ consultation_types : "ponuka"
+    doctors ||--o{ availability_rules : "ma rozvrh"
+    doctors ||--o{ availability_exceptions : "ma vynimky"
+    doctors ||--o{ appointments : "obsluhuje"
+    doctors ||--o{ payouts : "dostava"
+    doctors ||--o{ reviews : "dostava"
+
+    patients ||--o{ appointments : "rezervuje"
+    patients ||--o{ reviews : "pise"
+
+    consultation_types ||--o{ appointments : "typ konzultacie"
+    consultation_types ||--o{ availability_rules : "dlzka slotu"
+
+    appointments ||--o| payments : "platba"
+    appointments ||--o| reviews : "max 1 recenzia"
+    appointments ||--o{ scheduled_jobs : "expiracia a pripomienky"
+
+    payments ||--o{ refunds : "refundacie"
+```
+
+`processed_webhook_events` je zámerne mimo väzobného diagramu: je to deduplikačná tabuľka pre externé udalosti podľa `source + event_id`, nie doménová väzba na jednu konkrétnu entitu.
+
 Základné entity:
 
 - `users` - identita, email, heslo, rola, stav účtu.
+- `refresh_tokens` - revokovateľné session tokeny viazané na používateľa.
 - `patients` - pacientsky profil a šifrované PII polia.
 - `doctors` - profil lekára, kvalifikácie, bio, fotky, stav schválenia, jazyky, rating, Stripe účet.
 - `doctor_documents` - KYC a credential dokumenty uložené v S3, metadáta a stav overenia.
